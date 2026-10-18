@@ -293,6 +293,7 @@ a.where:hover{box-shadow:var(--nm-in-sm)}
 .m3dcol{display:flex;gap:8px;align-items:center}
 .m3dcol input[type=color]{width:44px;height:40px;padding:2px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
 .m3dcol button{border:none;background:none;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer}
+.m3dadv{margin-top:12px}.m3dadv summary{cursor:pointer;font-size:12px;color:var(--muted)}
 .m3dprev{display:none;margin-top:12px;height:340px;border-radius:18px;overflow:hidden;border:1px solid var(--line)}
 .m3dprev.on{display:block}
 @media(max-width:640px){.m3dopts{grid-template-columns:1fr}.m3dprev{height:300px}}
@@ -679,7 +680,7 @@ function collect(c,form,row){
   const v={},D={...((row&&row.details)||{})};let hasDet=false;
   for(const f of c.fields){
     if(f.t==='sec')continue;
-    if(f.t==='m3d'){hasDet=true;['model3d','model3d_glb','model3d_liquid','model3d_cap','model3d_glass'].forEach(k=>delete D[k]);Object.assign(D,read3D(form));continue;}
+    if(f.t==='m3d'){hasDet=true;['model3d','model3d_glb','model3d_liquid','model3d_cap','model3d_glass','model3d_depth','model3d_label'].forEach(k=>delete D[k]);Object.assign(D,read3D(form));continue;}
     const el=form.elements[f.k];if(!el)continue;
     if(f.det)hasDet=true;
     if(f.dep&&el.closest('[data-dep]').hidden)continue;
@@ -702,7 +703,7 @@ function collect(c,form,row){
 }
 
 /* ---------- vue 3D : choix du modèle, du verre, du bouchon, de la couleur + aperçu en direct ---------- */
-function m3dOpts(dept,sel){return '<option value="">— Aucun (photos seulement) —</option>'+Winfum3D.PRESETS.filter(p=>!dept||p.dept===dept).map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.label)}</option>`).join('');}
+function m3dOpts(dept,sel){return '<option value="">— Aucun (photos seulement) —</option><option value="photo" '+(sel==='photo'?'selected':'')+'>✨ Automatique d\'après la 1ʳᵉ photo du produit (recommandé)</option>'+Winfum3D.PRESETS.filter(p=>!dept||p.dept===dept).map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>Modèle générique : ${esc(p.label)}</option>`).join('');}
 function m3dHTML(row,f){
   const D=row.details||{},dept=row.department||'';
   const gl=Object.entries(Winfum3D.GLASS).map(([k,o])=>`<option value="${k}" ${D.model3d_glass===k?'selected':''}>${esc(o.label)}</option>`).join('');
@@ -714,6 +715,11 @@ function m3dHTML(row,f){
    <div><label>Bouchon / capsule</label><select name="m3d_cap"><option value="">Par défaut du modèle</option>${cp}</select></div>
    <div><label>Couleur du liquide</label><div class="m3dcol"><input type="color" name="m3d_liquid" value="${esc(D.model3d_liquid||'#c9a24a')}" data-unset="${D.model3d_liquid?'0':'1'}"><button type="button" data-m3d="reset">Par défaut</button></div></div>
   </div>
+  <details class="m3dadv"><summary>Réglages avancés (si la 3D automatique n'est pas parfaite)</summary>
+   <div class="m3dopts">
+    <div><label>Épaisseur du flacon (0,35 fin → 1 carré)</label><input type="number" name="m3d_depth" min="0.3" max="1.1" step="0.05" value="${esc(D.model3d_depth||'')}" placeholder="auto"></div>
+    <div style="grid-column:span 2"><label>Étiquette (en % de la photo : gauche, haut, droite, bas)</label><input type="text" name="m3d_label" value="${esc(D.model3d_label||'')}" placeholder="auto — ex. 34, 44, 66, 86"></div>
+   </div></details>
   <div class="urlfield" style="margin-top:12px"><input type="text" name="m3d_glb" value="${esc(D.model3d_glb||'')}" placeholder="Option avancée : lien d'un fichier .glb (vrai modèle 3D du produit)"><label class="upl">${svg('upload')}<span>Fichier .glb</span><input type="file" accept=".glb,.gltf,model/gltf-binary" style="display:none" onchange="wfUpload(this)"></label></div>
   <div class="m3dprev" data-prev3d></div>
   <div class="hint">Choisissez un modèle : un aperçu s'affiche ici, tournez-le du doigt. Sur le site, le client verra un bouton « Voir en 3D » sur la fiche. Un fichier .glb remplace le modèle choisi.</div></div>`;
@@ -722,14 +728,15 @@ function wire3D(form){
   const box=form.querySelector('.m3dbox');if(!box)return;
   const prev=box.querySelector('[data-prev3d]'),g=n=>form.elements[n];let t=null,seq=0;
   const cfg=()=>{const dept=g('department')?g('department').value:'',col=g('m3d_liquid'),cs=g('category_id'),cat=cs&&cs.selectedOptions[0]&&cs.value?cs.selectedOptions[0].textContent.split('›').pop().trim():'';
-    return {model:g('m3d_model').value,glb:g('m3d_glb').value.trim(),glass:g('m3d_glass').value,cap:g('m3d_cap').value,liquid:col.dataset.unset==='1'?'':col.value,name:(g('name')&&g('name').value.trim())||'Nom du produit',brand:dept==='vin'?'Fun For Us':'JB Parfumerie',sub:((dept==='vin'?'Vin ':'Parfum ')+cat).trim().toLowerCase()};};
+    const im=g('images')?String(g('images').value).split('\n').map(x=>x.trim()).filter(Boolean)[0]||'':'';
+    return {model:g('m3d_model').value,photo:im,dept:dept,depth:g('m3d_depth')?g('m3d_depth').value:'',labelRect:g('m3d_label')?g('m3d_label').value.trim():'',glb:g('m3d_glb').value.trim(),glass:g('m3d_glass').value,cap:g('m3d_cap').value,liquid:col.dataset.unset==='1'?'':col.value,name:(g('name')&&g('name').value.trim())||'Nom du produit',brand:dept==='vin'?'Fun For Us':'JB Parfumerie',sub:((dept==='vin'?'Vin ':'Parfum ')+cat).trim().toLowerCase()};};
   const draw=()=>{clearTimeout(t);t=setTimeout(async()=>{
     const c=cfg(),my=++seq;
     if(!c.model&&!c.glb){if(window.__winfum3d){try{window.__winfum3d.dispose()}catch(e){}window.__winfum3d=null;}prev.innerHTML='';prev.classList.remove('on');return;}
     prev.classList.add('on');
     try{await Winfum3D.mount(prev,c);}catch(e){if(my===seq&&e.message!=='obsolete'){prev.innerHTML=`<p class="hint" style="padding:22px;text-align:center">${esc(e.message||'Aperçu 3D indisponible')}</p>`;}}
   },250);};
-  form.addEventListener('input',e=>{const n=e.target.name;if(n==='m3d_liquid'){e.target.dataset.unset='0';draw();}else if(n==='m3d_glb'||n==='name')draw();});
+  form.addEventListener('input',e=>{const n=e.target.name;if(n==='m3d_liquid'){e.target.dataset.unset='0';draw();}else if(n==='m3d_glb'||n==='name'||n==='images'||n==='m3d_depth'||n==='m3d_label')draw();});
   form.addEventListener('change',e=>{const n=e.target.name;
     if(n==='department'){const s=g('m3d_model');if(s){const cur=s.value;s.innerHTML=m3dOpts(e.target.value,cur);}}
     if(['department','category_id','m3d_model','m3d_glass','m3d_cap','m3d_glb'].includes(n))draw();});
@@ -744,6 +751,8 @@ function read3D(form){
   if(g('m3d_glass').value)o.model3d_glass=g('m3d_glass').value;
   if(g('m3d_cap').value)o.model3d_cap=g('m3d_cap').value;
   if(g('m3d_liquid').dataset.unset!=='1')o.model3d_liquid=g('m3d_liquid').value;
+  if(g('m3d_depth')&&g('m3d_depth').value)o.model3d_depth=Number(g('m3d_depth').value);
+  if(g('m3d_label')&&g('m3d_label').value.trim())o.model3d_label=g('m3d_label').value.trim();
   return o;
 }
 
