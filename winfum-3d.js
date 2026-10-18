@@ -136,14 +136,14 @@
   function bgTex(T) {
     return canvasTex(T, 512, 512, function (g, w, h) {
       var gr = g.createRadialGradient(w / 2, h * 0.5, 10, w / 2, h * 0.5, w * 0.78);
-      gr.addColorStop(0, '#ffffff'); gr.addColorStop(.6, '#ffffff'); gr.addColorStop(1, '#f4f3f0');
+      gr.addColorStop(0, '#ffffff'); gr.addColorStop(.72, '#ffffff'); gr.addColorStop(1, '#ffffff');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
     });
   }
   function shadowTex(T) {
     return canvasTex(T, 256, 256, function (g, w, h) {
       var gr = g.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w / 2);
-      gr.addColorStop(0, 'rgba(40,28,14,.55)'); gr.addColorStop(.5, 'rgba(40,28,14,.22)'); gr.addColorStop(1, 'rgba(40,28,14,0)');
+      gr.addColorStop(0, 'rgba(28,24,20,.30)'); gr.addColorStop(.5, 'rgba(28,24,20,.10)'); gr.addColorStop(1, 'rgba(40,28,14,0)');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
     }, false);
   }
@@ -516,7 +516,7 @@
     if (A.capBottom > 0) {
       var goldCap = A.capKind === 'gold', cc = A.capRGB, capH = Math.max(4, A.capBottom - yTop), py, cr = [];
       var capMat = C.track(new T.MeshPhysicalMaterial(goldCap
-        ? { color: new T.Color(cc[0] / 255, cc[1] / 255, cc[2] / 255).convertSRGBToLinear(), metalness: 1, roughness: 0.36, envMapIntensity: 1.25, clearcoat: 0, side: T.DoubleSide }
+        ? { color: new T.Color(cc[0] / 255, cc[1] / 255, cc[2] / 255).convertSRGBToLinear(), metalness: 1, roughness: 0.43, envMapIntensity: 0.9, clearcoat: 0, side: T.DoubleSide }
         : { color: 0x1b1b1d, metalness: 0, roughness: 0.62, clearcoat: 0, envMapIntensity: 0.3, side: T.DoubleSide }));
       cr.push({ y: Y(A.capBottom), a: 0.0005, d: 0.0005, n: 2 });
       for (py = A.capBottom; py >= yTop; py -= 2) {
@@ -551,7 +551,7 @@
     if (!(liqTop > bodyTop + 4)) liqTop = bodyTop + A.H * 0.1;
     var wall = 0.055, base = dept === 'vin' ? 0.07 : 0.13;
     C.add(geo(ringsFor(wall, yBot, liqTop, base)), C.track(new T.MeshPhysicalMaterial({
-      color: lq, emissive: lq.clone().multiplyScalar(0.2), roughness: 0.55, metalness: 0, clearcoat: 0, envMapIntensity: 0.12, side: T.DoubleSide })));
+      color: lq, emissive: lq.clone().multiplyScalar(0.025), roughness: 0.68, metalness: 0, clearcoat: 0.05, envMapIntensity: 0.08, side: T.DoubleSide })));
 
     /* verre : uniquement des reflets de studio nets (pas de voile blanc) */
     var glassGeo = geo(ringsFor(0, yBot, bodyTop, 0));
