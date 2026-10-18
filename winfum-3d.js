@@ -464,9 +464,10 @@
       r = rings[i];
       for (k = 0; k < K; k++) {
         t = Math.PI * 2 * k / K; ct = Math.cos(t); st = Math.sin(t); o = (i * K + k) * 3;
-        pos[o] = r.a * (ct < 0 ? -1 : 1) * Math.pow(Math.abs(ct), 2 / r.n);
+        var f = r.rib ? 1 + r.rib.amp * Math.cos(t * r.rib.count) : 1;
+        pos[o] = f * r.a * (ct < 0 ? -1 : 1) * Math.pow(Math.abs(ct), 2 / r.n);
         pos[o + 1] = r.y;
-        pos[o + 2] = r.d * (st < 0 ? -1 : 1) * Math.pow(Math.abs(st), 2 / r.n);
+        pos[o + 2] = f * r.d * (st < 0 ? -1 : 1) * Math.pow(Math.abs(st), 2 / r.n);
       }
     }
     for (i = 0; i < rings.length - 1; i++) for (k = 0; k < K; k++) {
@@ -505,22 +506,25 @@
   function photoModel(C, T, cfg, ph) {
     var A = ph.A, img = ph.img, dept = cfg.dept === 'vin' ? 'vin' : 'parfum';
     var s = 2.7 / A.H, half = A.half, cx = A.cx, yTop = A.yTop, yBot = A.yBot, maxA = A.maxHalf * s;
-    var DR = (+cfg.depth > 0) ? Math.max(0.3, Math.min(1.1, +cfg.depth)) : (dept === 'vin' ? 0.5 : 0.62), N0 = dept === 'vin' ? 3.2 : 4.2;
+    var DR = (+cfg.depth > 0) ? Math.max(0.3, Math.min(1.1, +cfg.depth)) : (dept === 'vin' ? 1 : 0.62), N0 = dept === 'vin' ? 2 : 4.2;   // vin : section ronde
     function Y(py) { return (yBot - py) * s; }
     function aAt(py) { return half[Math.max(yTop, Math.min(yBot, Math.round(py)))] * s; }
     function sec(a) { var t = Math.max(0, Math.min(1, (a / maxA - 0.35) / 0.45)), sm = t * t * (3 - 2 * t); return { d: a * (1 + (DR - 1) * sm), n: 2 + (N0 - 2) * sm }; }
     var flip = sweepFlip(), bodyTop = A.capBottom > 0 ? A.capBottom : yTop;
 
-    /* capuchon : solide de révolution exact d'après la silhouette */
+    /* capuchon : forme exacte d'après la silhouette. Noir = plastique mat avec nervures de préhension et bague ; doré = métal satiné */
     if (A.capBottom > 0) {
-      var cp = [V(T, 0.001, Y(A.capBottom))], py;
-      for (py = A.capBottom; py >= yTop; py -= 2) cp.push(V(T, Math.max(0.01, aAt(py)), Y(py)));
-      cp.push(V(T, 0.01, Y(yTop))); cp.push(V(T, 0.001, Y(yTop)));
-      var goldCap = A.capKind === 'gold', cc = A.capRGB;
+      var goldCap = A.capKind === 'gold', cc = A.capRGB, capH = Math.max(4, A.capBottom - yTop), py, cr = [];
       var capMat = C.track(new T.MeshPhysicalMaterial(goldCap
-        ? { color: new T.Color(cc[0] / 255, cc[1] / 255, cc[2] / 255).convertSRGBToLinear(), metalness: 1, roughness: 0.16, envMapIntensity: 1.9, clearcoat: 0.3, clearcoatRoughness: 0.05, side: T.DoubleSide }
-        : { color: 0x151515, metalness: 0, roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 0.9, side: T.DoubleSide }));
-      C.add(lathe(T, cp, 72), capMat);
+        ? { color: new T.Color(cc[0] / 255, cc[1] / 255, cc[2] / 255).convertSRGBToLinear(), metalness: 1, roughness: 0.36, envMapIntensity: 1.25, clearcoat: 0, side: T.DoubleSide }
+        : { color: 0x1b1b1d, metalness: 0, roughness: 0.62, clearcoat: 0, envMapIntensity: 0.3, side: T.DoubleSide }));
+      cr.push({ y: Y(A.capBottom), a: 0.0005, d: 0.0005, n: 2 });
+      for (py = A.capBottom; py >= yTop; py -= 2) {
+        var ca = Math.max(0.01, aAt(py)), tt = (A.capBottom - py) / capH;
+        cr.push({ y: Y(py), a: ca, d: ca, n: 2, rib: (!goldCap && tt > 0.2 && tt < 0.92) ? { amp: 0.02, count: 44 } : null });
+      }
+      cr.push({ y: Y(yTop), a: 0.0005, d: 0.0005, n: 2 });
+      C.add(geo(cr, 176), capMat);
     }
 
     function ringsFor(inset, y0px, y1px, baseW) {
@@ -535,8 +539,8 @@
       r.push({ y: Y(y1px), a: 0.0005, d: 0.0005, n: 2 });
       return r;
     }
-    function geo(rings) {
-      var q = sweepArrays(rings, 72, flip), g = new T.BufferGeometry();
+    function geo(rings, K) {
+      var q = sweepArrays(rings, K || 72, flip), g = new T.BufferGeometry();
       g.setAttribute('position', new T.BufferAttribute(q.pos, 3));
       g.setIndex(new T.BufferAttribute(new Uint16Array(q.idx), 1));
       g.computeVertexNormals(); return g;
@@ -547,13 +551,20 @@
     if (!(liqTop > bodyTop + 4)) liqTop = bodyTop + A.H * 0.1;
     var wall = 0.055, base = dept === 'vin' ? 0.07 : 0.13;
     C.add(geo(ringsFor(wall, yBot, liqTop, base)), C.track(new T.MeshPhysicalMaterial({
-      color: lq, emissive: lq.clone().multiplyScalar(0.34), roughness: 0.1, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 0.6, side: T.DoubleSide })));
+      color: lq, emissive: lq.clone().multiplyScalar(0.2), roughness: 0.55, metalness: 0, clearcoat: 0, envMapIntensity: 0.12, side: T.DoubleSide })));
 
     /* verre : uniquement des reflets de studio nets (pas de voile blanc) */
     var glassGeo = geo(ringsFor(0, yBot, bodyTop, 0));
     var gm = C.add(glassGeo, C.track(new T.MeshStandardMaterial({
-      color: 0x000000, metalness: 1, roughness: 0.035, envMapIntensity: 1.25, transparent: true, blending: T.AdditiveBlending, depthWrite: false, side: T.FrontSide })));
+      color: 0x000000, metalness: 1, roughness: 0.09, envMapIntensity: 0.5, transparent: true, blending: T.AdditiveBlending, depthWrite: false, side: T.FrontSide })));
     gm.renderOrder = 3;
+    /* épaisseur du verre : bords légèrement sombres (effet Fresnel), centre parfaitement clair */
+    var edge = C.add(glassGeo, C.track(new T.ShaderMaterial({
+      transparent: true, depthWrite: false, side: T.FrontSide,
+      vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying vec3 vN; varying vec3 vV; void main(){ float f = 1.0 - abs(dot(normalize(vN), normalize(vV))); f = pow(f, 2.4); gl_FragColor = vec4(vec3(0.09, 0.10, 0.10), f * 0.55); }'
+    })));
+    edge.renderOrder = 3;
 
     /* étiquette réelle découpée dans la photo */
     var lb = A.label;
@@ -639,8 +650,8 @@
 
       var bg = new T.Mesh(new T.PlaneGeometry(60, 60), new T.MeshBasicMaterial({ map: bgTex(T), toneMapped: false, depthWrite: false }));
       bg.position.set(0, 0, -14); scene.add(bg);
-      var key = new T.DirectionalLight(0xffffff, 1.1); key.position.set(3, 6, 5); scene.add(key);
-      if (usePhoto) scene.add(new T.HemisphereLight(0xffffff, 0xe8e4dc, 0.7));
+      var key = new T.DirectionalLight(0xffffff, usePhoto ? 0.55 : 1.1); key.position.set(3, 6, 5); scene.add(key);
+      if (usePhoto) scene.add(new T.HemisphereLight(0xffffff, 0xd9d4ca, 0.5));
 
       var C = Ctx(T, cfg, pr || { liquid: '#e6bf72', cap: 'or', glass: 'clair' });
       var info = { id: pr && pr.id, name: cfg.name || '', brand: cfg.brand || 'Winfum', sub: cfg.sub || '' };
@@ -694,7 +705,7 @@
         var hint = document.createElement('div'); hint.className = 'w3d-hint'; hint.innerHTML = '<span>↔ Tournez à 360° · pincez pour zoomer</span>'; box.appendChild(hint);
 
         /* ----- interaction : tourner à 360°, petit zoom (pincer / molette), puis retour très lent à la position d'origine ----- */
-        var BASE = -0.35, yaw = BASE, vy = 0, zoomT = 1, idle = 0, ptrs = {}, np = 0, pinch0 = 0, zoom0 = 1, lx = 0, lastTap = 0, snap = false;
+        var BASE = 0, yaw = BASE, vy = 0, zoomT = 1, idle = 0, ptrs = {}, np = 0, pinch0 = 0, zoom0 = 1, lx = 0, lastTap = 0, snap = false;
         function stopHint() { hint.classList.add('off'); }
         function clampZ(z) { return Math.max(1, Math.min(1.75, z)); }
         function dist() { var k = Object.keys(ptrs), a = ptrs[k[0]], b = ptrs[k[1]]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; }
